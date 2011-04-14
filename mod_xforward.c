@@ -150,73 +150,6 @@ static const char *xforward_cmd_flag(cmd_parms *cmd, void *perdir_confv, int fla
     return NULL;
 }
 
-/*
-    little helper function to get the original request path
-
-    code borrowed from request.c and util_script.c
-*/
-static const char *ap_xforward_get_orginal_path(request_rec *rec)
-{
-    const char
-        *rv = rec->the_request,
-        *last;
-    
-    int dir = 0;
-    size_t uri_len;
-
-    /* skip method && spaces */
-    while (*rv && !apr_isspace(*rv))
-    {
-        ++rv;
-    }
-    while (apr_isspace(*rv))
-    {
-        ++rv;
-    }
-    /* first space is the request end */
-    last = rv;
-    while (*last && !apr_isspace(*last))
-    {
-        ++last;
-    }
-    uri_len = last - rv;
-    if (!uri_len)
-    {
-        return NULL;
-    }
-
-    /* alright, lets see if the request_uri changed! */
-    if (strncmp(rv, rec->uri, uri_len) == 0)
-    {
-        rv = apr_pstrdup(rec->pool, rec->filename);
-        dir = rec->finfo.filetype == APR_DIR;
-    }
-    else
-    {
-        /* need to lookup the url again as it changed */
-        request_rec *sr = ap_sub_req_lookup_uri(
-            apr_pstrmemdup(rec->pool, rv, uri_len),
-            rec,
-            NULL
-            );
-        if (!sr)
-        {
-            return NULL;
-        }
-        rv = apr_pstrdup(rec->pool, sr->filename);
-        dir = rec->finfo.filetype == APR_DIR;
-        ap_destroy_sub_req(sr);
-    }
-
-    /* now we need to truncate so we only have the directory */
-    if (!dir && (last = ap_strrchr(rv, '/')) != NULL)
-    {
-        *((char*)last + 1) = '\0';
-    }
-
-    return rv;    
-}
-
 static apr_status_t ap_xforward_output_filter(
     ap_filter_t *f,
     apr_bucket_brigade *in
@@ -228,7 +161,6 @@ static apr_status_t ap_xforward_output_filter(
     apr_bucket *e;
 
     const char *url = NULL, *root = NULL;
-    char *newpath = NULL;
 
 #ifdef _DEBUG
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "xforward: output_filter for %s", r->the_request);
@@ -257,17 +189,19 @@ static apr_status_t ap_xforward_output_filter(
         alright, look for x-forwward
     */
     url = apr_table_get(r->headers_out, AP_XFORWARD_HEADER);
-    if (url)
+    if (url) {
 	url = apr_pstrdup(r->pool, url);
-    apr_table_unset(r->headers_out, AP_XFORWARD_HEADER);
+	apr_table_unset(r->headers_out, AP_XFORWARD_HEADER);
+    }
 
     /* cgi/fastcgi will put the stuff into err_headers_out */
     if (!url || !*url)
     {
         url = apr_table_get(r->err_headers_out, AP_XFORWARD_HEADER);
-	if (url)
+	if (url) {
 	    url = apr_pstrdup(r->pool, url);
-        apr_table_unset(r->err_headers_out, AP_XFORWARD_HEADER);
+	    apr_table_unset(r->err_headers_out, AP_XFORWARD_HEADER);
+	}
     }
 
     /* nothing there :p */
@@ -276,6 +210,12 @@ static apr_status_t ap_xforward_output_filter(
 #ifdef _DEBUG
         ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "xforward: nothing found");
 #endif
+        ap_remove_output_filter(f);
+        return ap_pass_brigade(f->next, in);
+    }
+
+    if (ap_find_linked_module("mod_proxy.c") == NULL) {
+        ap_log_error(APLOG_MARK, APLOG_ALERT, 0, r->server, "xforward: mod_proxy.c is not available");
         ap_remove_output_filter(f);
         return ap_pass_brigade(f->next, in);
     }
@@ -292,50 +232,8 @@ static apr_status_t ap_xforward_output_filter(
     }
     r->eos_sent = 0;
 
-    /*
-        grab the current path
-        somewhat nasty...
-        any better ways?
-
-        freaking fix for cgi-alike handlers that overwrite our precious values :p
-    */
-    root = ap_xforward_get_orginal_path(r);
-
-    if (ap_find_linked_module("mod_proxy.c") == NULL) {
-        ap_log_error(APLOG_MARK, APLOG_ALERT, 0, r->server, "xforward: mod_proxy.c is not available");
-        return ap_pass_brigade(f->next, in);
-    }
-
 #ifdef _DEBUG
-    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "xforward: path is %s", root);
-#endif
-
-    /*
-        alright, we now build our new path
-    */
-    if ((rv = apr_filepath_merge(
-        &newpath,
-        root,
-        url,
-        APR_FILEPATH_TRUENAME,
-        r->pool
-    )) != OK)
-    {
-        ap_log_rerror(
-            APLOG_MARK,
-            APLOG_ERR,
-            rv,
-            r,
-            "xforward: unable to forward url: %s",
-            url
-        );
-        ap_remove_output_filter(f);
-        ap_die(HTTP_NOT_FOUND, r);
-        return HTTP_NOT_FOUND;
-    }
-
-#ifdef _DEBUG
-    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "xforward: found %s", newpath);
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "xforward: url is %s", url);
 #endif
 
     /*
