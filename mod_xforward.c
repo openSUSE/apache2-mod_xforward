@@ -257,12 +257,16 @@ static apr_status_t ap_xforward_output_filter(
         alright, look for x-forwward
     */
     url = apr_table_get(r->headers_out, AP_XFORWARD_HEADER);
+    if (url)
+	url = apr_pstrdup(r->pool, url);
     apr_table_unset(r->headers_out, AP_XFORWARD_HEADER);
 
     /* cgi/fastcgi will put the stuff into err_headers_out */
     if (!url || !*url)
     {
         url = apr_table_get(r->err_headers_out, AP_XFORWARD_HEADER);
+	if (url)
+	    url = apr_pstrdup(r->pool, url);
         apr_table_unset(r->err_headers_out, AP_XFORWARD_HEADER);
     }
 
