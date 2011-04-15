@@ -204,7 +204,7 @@ static apr_status_t ap_xforward_output_filter(
     }
 
     /* nothing there :p */
-    if (!url || !*url)
+    if (!url || !*url || strncmp(url, "proxy:", 6) == 0)
     {
 #ifdef _DEBUG
         ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "xforward: nothing found");
@@ -247,11 +247,12 @@ static apr_status_t ap_xforward_output_filter(
     }
     r->filename = apr_pstrcat(r->pool, "proxy:", url, NULL);
     r->handler  = "proxy-server";
+    apr_table_set(r->err_headers_out, AP_XFORWARD_HEADER, r->filename);
+
+    ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, r->server, "xforward: redirect to %s", r->filename);
 
     // hand over to mod_proxy module
     ap_internal_redirect_handler(url, r);
-
-    ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, r->server, "xforward: redirect done %s", r->filename);
 
     return OK;
 }
@@ -286,8 +287,28 @@ static const command_rec xforward_command_table[] = {
         ),
     { NULL }
 };
+
+static int hook_fixup(request_rec *r)
+{
+    const char *url = apr_table_get(r->err_headers_out, AP_XFORWARD_HEADER);
+    if (url && *url) {
+        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "xforward: FIXUP OK %s", url );
+        r->filename = apr_pstrdup(r->pool, url);
+        r->handler  = "proxy-server";
+        if (PROXYREQ_NONE == r->proxyreq) {
+            r->proxyreq = PROXYREQ_REVERSE;
+        }
+        return OK;
+    }
+
+    return DECLINED;
+}
+
 static void xforward_register_hooks(apr_pool_t *p)
 {
+    static const char * const aszPre[]={ "mod_proxy.c", NULL };
+    ap_hook_fixups(hook_fixup, aszPre, NULL, APR_HOOK_FIRST);
+
     ap_register_output_filter(
         "XFORWARD",
         ap_xforward_output_filter,
