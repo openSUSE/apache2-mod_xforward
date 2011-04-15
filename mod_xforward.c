@@ -157,10 +157,9 @@ static apr_status_t ap_xforward_output_filter(
 {
     request_rec *r = f->r;
 
-    apr_status_t rv;
     apr_bucket *e;
 
-    const char *url = NULL, *root = NULL;
+    const char *url = NULL;
 
 #ifdef _DEBUG
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "xforward: output_filter for %s", r->the_request);
