@@ -204,7 +204,7 @@ static apr_status_t ap_xforward_output_filter(
     }
 
     /* nothing there :p */
-    if (!url || !*url || strncmp(url, "proxy:", 6) == 0)
+    if (!url || !*url)
     {
 #ifdef _DEBUG
         ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "xforward: nothing found");
@@ -237,8 +237,6 @@ static apr_status_t ap_xforward_output_filter(
 
     /*
         let apache do an internal redirect
-        we may add proxy code here later to avoid the need of using mod_proxy. This would have
-        the advantage that an apache miss configuration can't access the forward servers directly.
     */
 
     /* now make sure the request gets handled by the proxy handler */
@@ -247,11 +245,13 @@ static apr_status_t ap_xforward_output_filter(
     }
     r->filename = apr_pstrcat(r->pool, "proxy:", url, NULL);
     r->handler  = "proxy-server";
-    apr_table_set(r->err_headers_out, AP_XFORWARD_HEADER, r->filename);
+
+    /* make proxy url available to the fixup */
+    apr_pool_userdata_setn(r->filename, "XFORWARD_REDIRECT_URL", NULL, r->pool);
 
     ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, r->server, "xforward: redirect to %s", r->filename);
 
-    // hand over to mod_proxy module
+    /* hand over to mod_proxy module */
     ap_internal_redirect_handler(url, r);
 
     return OK;
@@ -290,18 +290,19 @@ static const command_rec xforward_command_table[] = {
 
 static int hook_fixup(request_rec *r)
 {
-    const char *url = apr_table_get(r->err_headers_out, AP_XFORWARD_HEADER);
-    if (url && *url) {
-        ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "xforward: FIXUP OK %s", url );
-        r->filename = apr_pstrdup(r->pool, url);
-        r->handler  = "proxy-server";
-        if (PROXYREQ_NONE == r->proxyreq) {
-            r->proxyreq = PROXYREQ_REVERSE;
-        }
-        return OK;
+    const char *url;
+    if (!r->prev)
+	return DECLINED;	/* not redirected */
+    if (apr_pool_userdata_get((void **)&url, "XFORWARD_REDIRECT_URL", r->prev->pool) != APR_SUCCESS)
+	return DECLINED;	/* not redireced by us */
+    
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "xforward: FIXUP OK %s", url );
+    r->filename = apr_pstrdup(r->pool, url);
+    r->handler  = "proxy-server";
+    if (PROXYREQ_NONE == r->proxyreq) {
+	r->proxyreq = PROXYREQ_REVERSE;
     }
-
-    return DECLINED;
+    return OK;
 }
 
 static void xforward_register_hooks(apr_pool_t *p)
