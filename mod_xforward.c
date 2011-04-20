@@ -249,7 +249,7 @@ static apr_status_t ap_xforward_output_filter(
     /* make proxy url available to the fixup */
     apr_pool_userdata_setn(r->filename, "XFORWARD_REDIRECT_URL", NULL, r->pool);
 
-    ap_log_error(APLOG_MARK, APLOG_NOTICE, 0, r->server, "xforward: redirect to %s", r->filename);
+    ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "xforward: redirect to %s", r->filename);
 
     /* hand over to mod_proxy module */
     ap_internal_redirect_handler(url, r);
