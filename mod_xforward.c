@@ -290,10 +290,10 @@ static const command_rec xforward_command_table[] = {
 
 static int hook_fixup(request_rec *r)
 {
-    const char *url;
+    const char *url = NULL;
     if (!r->prev)
 	return DECLINED;	/* not redirected */
-    if (apr_pool_userdata_get((void **)&url, "XFORWARD_REDIRECT_URL", r->prev->pool) != APR_SUCCESS)
+    if (apr_pool_userdata_get((void **)&url, "XFORWARD_REDIRECT_URL", r->prev->pool) != APR_SUCCESS || url == NULL)
 	return DECLINED;	/* not redireced by us */
     
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "xforward: FIXUP OK %s", url );
