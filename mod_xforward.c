@@ -35,6 +35,9 @@
  *     apxs2 -cia mod_xforward.c
  */
 
+/*
+ * Source repository: https://github.com/openSUSE/apache2-mod_xforward
+ */
 
 #include "apr.h"
 #include "apr_lib.h"
