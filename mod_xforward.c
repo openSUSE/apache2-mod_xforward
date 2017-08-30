@@ -17,7 +17,7 @@
 /*
  * mod_xforward.c: Backend process may set X-FORWARD header
  *
- * Whenever an X-FORWARD header occures in the response headers drop
+ * Whenever an X-FORWARD header occurs in the response headers drop
  * the body and do an internal redirect to the specified URL via mod_proxy
  * module.
  *
