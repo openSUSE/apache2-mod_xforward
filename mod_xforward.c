@@ -61,14 +61,7 @@
 #include "http_protocol.h" /* ap_hook_insert_error_filter */
 
 #define AP_XFORWARD_HEADER "X-FORWARD"
-
-#if defined(__GNUC__) && (__GNUC__ > 2)
-#   define AP_XFORWARD_EXPECT_TRUE(x) __builtin_expect((x), 1);
-#   define AP_XFORWARD_EXPECT_FALSE(x) __builtin_expect((x), 0);
-#else
-#   define AP_XFORWARD_EXPECT_TRUE(x) (x)
-#   define AP_XFORWARD_EXPECT_FALSE(x) (x)
-#endif
+#define AP_XREQUESTID_HEADER "X-REQUEST-ID"
 
 #define _DEBUG 1
 
@@ -163,6 +156,7 @@ static apr_status_t ap_xforward_output_filter(
     apr_bucket *e;
 
     const char *url = NULL;
+    const char *requestid = NULL;
 
 #ifdef _DEBUG
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "xforward: output_filter for %s", r->the_request);
@@ -237,6 +231,15 @@ static apr_status_t ap_xforward_output_filter(
 #ifdef _DEBUG
     ap_log_error(APLOG_MARK, APLOG_DEBUG, 0, r->server, "xforward: url is %s", url);
 #endif
+
+    /* look for x-request-id and put it in the request */
+    requestid = apr_table_get(r->headers_out, AP_XREQUESTID_HEADER);
+    if (!requestid || !*requestid)
+	requestid = apr_table_get(r->err_headers_out, AP_XREQUESTID_HEADER);
+    if (requestid && *requestid) 
+	apr_table_set(r->headers_in, AP_XREQUESTID_HEADER, requestid);
+    else
+	apr_table_unset(r->headers_in, AP_XREQUESTID_HEADER);
 
     /*
         let apache do an internal redirect
